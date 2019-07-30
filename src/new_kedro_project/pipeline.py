@@ -53,7 +53,7 @@ def create_pipeline(**kwargs):
                     train_y="example_train_y",
                     test_x="example_test_x",
                     test_y="example_test_y",
-                )
+                ),
             ),
             node(
                 train_model,

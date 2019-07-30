@@ -46,16 +46,19 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 import pai
 from pai_lmpt.detect import ContinuousTest
 
+
 def generate_plot():
     """
     util to generate plot
     """
+
     def f(t):
         return np.exp(-t) * np.cos(2 * np.pi * t)
 
     t1 = np.arange(0.0 * random.random(), 5.0 * random.random(), 0.1 * random.random())
-    f = plt.plot(t1, f(t1), 'bo')
+    f = plt.plot(t1, f(t1), "bo")
     return f
+
 
 def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> Dict[str, Any]:
     """Node for splitting the classical Iris data set into training and test
@@ -112,9 +115,7 @@ def train_model(
 
     local_path = Path(parameters["MY_LOCAL_PAI_DIR"]).absolute()
 
-    pai.set_config(
-        experiment_name=parameters["PAI_EXPERIMENT"], local_path=str(local_path)
-    )
+    pai.set_config(experiment=parameters["PAI_EXPERIMENT"], local_path=str(local_path))
 
     run_name = "Model Run at %s" % datetime.now().strftime("%H:%M:%S")
     # run_name = None
@@ -156,9 +157,9 @@ def predict(
     pai.start_run(run_id=run_id)
     # 5. Save performance metric
     pai.log_metrics({"accuracy": accuracy_score(test_data_y, preds)})
-    pai.log_metrics({"f1": f1_score(test_data_y, preds, average='macro')})
-    pai.log_metrics({"precision": precision_score(test_data_y, preds, average='macro')})
-    pai.log_metrics({"recall": recall_score(test_data_y, preds, average='macro')})
+    pai.log_metrics({"f1": f1_score(test_data_y, preds, average="macro")})
+    pai.log_metrics({"precision": precision_score(test_data_y, preds, average="macro")})
+    pai.log_metrics({"recall": recall_score(test_data_y, preds, average="macro")})
 
     # 6. Save other artifacts, e.g. the confusion matrix
     pai.log_artifacts({"confusion_matrix": conf_mat})
