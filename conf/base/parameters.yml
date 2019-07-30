@@ -1,8 +1,10 @@
-
-# Parameters for the example pipeline. Feel free to delete these once you
-# remove the example pipeline from pipeline.py and the example nodes in
-# nodes/example.py
 example_test_data_ratio: 0.2
-example_num_train_iter: 10000
-example_learning_rate: 0.01
+n_estimators: 500
+random_state: 0
 
+MY_S3_BUCKET: 's3://pai-mlflow-test'
+
+MY_LOCAL_PAI_DIR: logs/pai
+PAI_EXPERIMENT: 'RF-Classifier PROD'
+
+covariate_shift_tests: ['ks_test', 'levene_test']

@@ -14,8 +14,8 @@
 # ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
-# The QuantumBlack Visual Analytics Limited ("QuantumBlack") name and logo
-# (either separately or in combination, "QuantumBlack Trademarks") are
+# The QuantumBlack Visual Analytics Limited (“QuantumBlack”) name and logo
+# (either separately or in combination, “QuantumBlack Trademarks”) are
 # trademarks of QuantumBlack. The License does not grant you any right or
 # license to the QuantumBlack Trademarks. You may not use the QuantumBlack
 # Trademarks or any confusingly similar mark as a trademark for your product,
@@ -29,16 +29,33 @@
 """Example code for the nodes in the example pipeline. This code is meant
 just for illustrating basic Kedro features.
 
-PLEASE DELETE THIS FILE ONCE YOU START WORKING ON YOUR OWN PROJECT!
 """
 # pylint: disable=invalid-name
 
-import logging
+from pathlib import Path
 from typing import Any, Dict
+from datetime import datetime
+import matplotlib.pyplot as plt
+import random
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
+import pai
+from pai_lmpt.detect import ContinuousTest
+
+def generate_plot():
+    """
+    util to generate plot
+    """
+    def f(t):
+        return np.exp(-t) * np.cos(2 * np.pi * t)
+
+    t1 = np.arange(0.0 * random.random(), 5.0 * random.random(), 0.1 * random.random())
+    f = plt.plot(t1, f(t1), 'bo')
+    return f
 
 def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> Dict[str, Any]:
     """Node for splitting the classical Iris data set into training and test
@@ -55,9 +72,8 @@ def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> Dict[str, Any]
         "petal_width",
         "target",
     ]
-    classes = sorted(data["target"].unique())
-    # One-hot encoding for the target variable
-    data = pd.get_dummies(data, columns=["target"], prefix="", prefix_sep="")
+
+    data["target"] = pd.factorize(data["target"])[0]
 
     # Shuffle all the data
     data = data.sample(frac=1).reset_index(drop=True)
@@ -70,9 +86,9 @@ def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> Dict[str, Any]
 
     # Split the data to features and labels
     train_data_x = training_data.loc[:, "sepal_length":"petal_width"]
-    train_data_y = training_data[classes]
+    train_data_y = training_data["target"]
     test_data_x = test_data.loc[:, "sepal_length":"petal_width"]
-    test_data_y = test_data[classes]
+    test_data_y = test_data["target"]
 
     # When returning many variables, it is a good practice to give them names:
     return dict(
@@ -84,69 +100,99 @@ def split_data(data: pd.DataFrame, parameters: Dict[str, Any]) -> Dict[str, Any]
 
 
 def train_model(
-    train_x: pd.DataFrame, train_y: pd.DataFrame, parameters: Dict[str, Any]
-) -> np.ndarray:
+    train_data_x: pd.DataFrame, train_data_y: pd.DataFrame, parameters: Dict[str, Any]
+) -> Dict[str, Any]:
     """Node for training a simple multi-class logistic regression model. The
     number of training iterations as well as the learning rate are taken from
     conf/project/parameters.yml. All of the data as well as the parameters
     will be provided to this function at the time of execution.
     """
-    num_iter = parameters["example_num_train_iter"]
-    lr = parameters["example_learning_rate"]
-    X = train_x.values
-    Y = train_y.values
 
-    # Add bias to the features
-    bias = np.ones((X.shape[0], 1))
-    X = np.concatenate((bias, X), axis=1)
+    # PAI experiment tracking begins here:
 
-    weights = []
-    # Train one model for each class in Y
-    for k in range(Y.shape[1]):
-        # Initialise weights
-        theta = np.zeros(X.shape[1])
-        y = Y[:, k]
-        for _ in range(num_iter):
-            z = np.dot(X, theta)
-            h = _sigmoid(z)
-            gradient = np.dot(X.T, (h - y)) / y.size
-            theta -= lr * gradient
-        # Save the weights for each model
-        weights.append(theta)
+    local_path = Path(parameters["MY_LOCAL_PAI_DIR"]).absolute()
 
-    # Return a joint multi-class model with weights for all classes
-    return np.vstack(weights).transpose()
+    pai.set_config(
+        experiment_name=parameters["PAI_EXPERIMENT"], local_path=str(local_path)
+    )
+
+    run_name = "Model Run at %s" % datetime.now().strftime("%H:%M:%S")
+    # run_name = None
+    pai.start_run(run_name=run_name)
+
+    random_state = parameters["random_state"]
+    n_estimators = parameters["n_estimators"]
+
+    clf = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state)
+
+    clf.fit(train_data_x, train_data_y)
+
+    # 1. Use the default logger to save the model object, and model parameters
+    pai.log(clf)
+
+    # 2. Save other parameters which may be relevant
+    pai.log_params({"master_table_ver": "abc", "seed": 0})
+
+    # 3. Save features
+    pai.log_features(list(train_data_x.columns), clf.feature_importances_)
+
+    current_run_uuid = pai.current_run_uuid()
+
+    pai.end_run()
+
+    return dict(fitted_model=clf, run_id=current_run_uuid)
 
 
-def predict(model: np.ndarray, test_x: pd.DataFrame) -> np.ndarray:
+def predict(
+    fitted_model, test_data_x: pd.DataFrame, test_data_y: pd.DataFrame, run_id: str
+) -> np.ndarray:
     """Node for making predictions given a pre-trained model and a test set.
     """
-    X = test_x.values
+    preds = fitted_model.predict(test_data_x)
+    conf_mat = pd.crosstab(
+        test_data_y, preds, rownames=["Actual Species"], colnames=["Predicted Species"]
+    )
 
-    # Add bias to the features
-    bias = np.ones((X.shape[0], 1))
-    X = np.concatenate((bias, X), axis=1)
+    pai.start_run(run_id=run_id)
+    # 5. Save performance metric
+    pai.log_metrics({"accuracy": accuracy_score(test_data_y, preds)})
+    pai.log_metrics({"f1": f1_score(test_data_y, preds, average='macro')})
+    pai.log_metrics({"precision": precision_score(test_data_y, preds, average='macro')})
+    pai.log_metrics({"recall": recall_score(test_data_y, preds, average='macro')})
 
-    # Predict "probabilities" for each class
-    result = _sigmoid(np.dot(X, model))
+    # 6. Save other artifacts, e.g. the confusion matrix
+    pai.log_artifacts({"confusion_matrix": conf_mat})
+    pai.log_artifacts({"plot": generate_plot()})
 
-    # Return the index of the class with max probability for all samples
-    return np.argmax(result, axis=1)
+    pai.end_run()
+
+    return preds
 
 
-def report_accuracy(predictions: np.ndarray, test_y: pd.DataFrame) -> None:
-    """Node for reporting the accuracy of the predictions performed by the
-    previous node. Notice that this function has no outputs, except logging.
+def data_shift_eval(
+    eval_df: pd.DataFrame,
+    reference_df: pd.DataFrame,
+    run_id: str,
+    parameters: Dict[str, Any],
+):
+    """Node for doing covariate shift analysis on the new data
     """
-    # Get true class index
-    target = np.argmax(test_y.values, axis=1)
-    # Calculate accuracy of predictions
-    accuracy = np.sum(predictions == target) / target.shape[0]
-    # Log the accuracy of the model
-    log = logging.getLogger(__name__)
-    log.info("Model accuracy on test set: {0:.2f}%".format(accuracy * 100))
 
+    tests = parameters["covariate_shift_tests"]
+    features = ["sepal_length", "petal_length"]
 
-def _sigmoid(z):
-    """A helper sigmoid function used by the training and the scoring nodes."""
-    return 1 / (1 + np.exp(-z))
+    with pai.start_run(run_id=run_id):
+        # run hypothesis tests on each feature
+        for f in features:
+            result = (
+                ContinuousTest(calls=tests)
+                .run(evaluation=eval_df[f].values, reference=reference_df[f].values)
+                .model_stats
+            )
+
+            pai.log_metrics(
+                {
+                    "%s_ks_test" % f: result["ks_test"][0],
+                    "%s_levene_test" % f: result["levene_test"][0],
+                }
+            )
