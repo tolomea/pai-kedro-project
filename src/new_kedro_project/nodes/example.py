@@ -113,14 +113,6 @@ def train_model(
 
     # PAI experiment tracking begins here:
 
-    local_path = Path(parameters["MY_LOCAL_PAI_DIR"]).absolute()
-
-    pai.set_config(experiment=parameters["PAI_EXPERIMENT"], local_path=str(local_path))
-
-    run_name = "Model Run at %s" % datetime.now().strftime("%H:%M:%S")
-    # run_name = None
-    pai.start_run(run_name=run_name)
-
     random_state = parameters["random_state"]
     n_estimators = parameters["n_estimators"]
 
@@ -137,15 +129,11 @@ def train_model(
     # 3. Save features
     pai.log_features(list(train_data_x.columns), clf.feature_importances_)
 
-    current_run_uuid = pai.current_run_uuid()
-
-    pai.end_run()
-
-    return dict(fitted_model=clf, run_id=current_run_uuid)
+    return dict(fitted_model=clf)
 
 
 def predict(
-    fitted_model, test_data_x: pd.DataFrame, test_data_y: pd.DataFrame, run_id: str
+    fitted_model, test_data_x: pd.DataFrame, test_data_y: pd.DataFrame
 ) -> np.ndarray:
     """Node for making predictions given a pre-trained model and a test set.
     """
@@ -154,7 +142,6 @@ def predict(
         test_data_y, preds, rownames=["Actual Species"], colnames=["Predicted Species"]
     )
 
-    pai.start_run(run_id=run_id)
     # 5. Save performance metric
     pai.log_metrics({"accuracy": accuracy_score(test_data_y, preds)})
     pai.log_metrics({"f1": f1_score(test_data_y, preds, average="macro")})
@@ -165,16 +152,11 @@ def predict(
     pai.log_artifacts({"confusion_matrix": conf_mat})
     pai.log_artifacts({"plot": generate_plot()})
 
-    pai.end_run()
-
     return preds
 
 
 def data_shift_eval(
-    eval_df: pd.DataFrame,
-    reference_df: pd.DataFrame,
-    run_id: str,
-    parameters: Dict[str, Any],
+    eval_df: pd.DataFrame, reference_df: pd.DataFrame, parameters: Dict[str, Any]
 ):
     """Node for doing covariate shift analysis on the new data
     """
@@ -182,18 +164,16 @@ def data_shift_eval(
     tests = parameters["covariate_shift_tests"]
     features = ["sepal_length", "petal_length"]
 
-    with pai.start_run(run_id=run_id):
-        # run hypothesis tests on each feature
-        for f in features:
-            result = (
-                ContinuousTest(calls=tests)
-                .run(evaluation=eval_df[f].values, reference=reference_df[f].values)
-                .model_stats
-            )
+    for f in features:
+        result = (
+            ContinuousTest(calls=tests)
+            .run(evaluation=eval_df[f].values, reference=reference_df[f].values)
+            .model_stats
+        )
 
-            pai.log_metrics(
-                {
-                    "%s_ks_test" % f: result["ks_test"][0],
-                    "%s_levene_test" % f: result["levene_test"][0],
-                }
-            )
+        pai.log_metrics(
+            {
+                "%s_ks_test" % f: result["ks_test"][0],
+                "%s_levene_test" % f: result["levene_test"][0],
+            }
+        )

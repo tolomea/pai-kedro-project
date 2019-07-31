@@ -58,16 +58,16 @@ def create_pipeline(**kwargs):
             node(
                 train_model,
                 ["example_train_x", "example_train_y", "parameters"],
-                dict(fitted_model="fitted_model", run_id="run_id"),
+                dict(fitted_model="fitted_model"),
             ),
             node(
                 predict,
-                ["fitted_model", "example_test_x", "example_test_y", "run_id"],
+                ["fitted_model", "example_test_x", "example_test_y"],
                 "example_predictions",
             ),
             node(
                 data_shift_eval,
-                ["example_test_x", "example_train_x", "run_id", "parameters"],
+                ["example_test_x", "example_train_x", "parameters"],
                 None,
             ),
         ]

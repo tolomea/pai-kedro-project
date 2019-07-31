@@ -30,15 +30,31 @@
 
 from pathlib import Path
 from typing import Iterable, Type
+from datetime import datetime
 
 from kedro.context import KedroContext
 from kedro.runner import AbstractRunner
 from kedro.pipeline import Pipeline
+import pai
 
 from new_kedro_project.pipeline import create_pipeline
 
 
-class ProjectContext(KedroContext):
+class PAIKedroContextMixin:
+    def __init__(self, *args, pai_path=Path("logs/pai"), **kwargs):
+        super().__init__(*args, **kwargs)
+
+        pai.set_config(
+            experiment=self.pai_experiment, local_path=str(self.project_path / pai_path)
+        )
+
+    def run(self, *args, **kwargs):
+        run_name = "Model Run at %s" % datetime.now().strftime("%H:%M:%S")
+        with pai.start_run(run_name=run_name):
+            super().run(*args, **kwargs)
+
+
+class ProjectContext(PAIKedroContextMixin, KedroContext):
     """Users can override the remaining methods from the parent class here, or create new ones
     (e.g. as required by plugins)
 
@@ -46,6 +62,7 @@ class ProjectContext(KedroContext):
 
     project_name = "New Kedro Project"
     project_version = "0.14.3"
+    pai_experiment = "RF-Classifier PROD"
 
     @property
     def pipeline(self) -> Pipeline:
