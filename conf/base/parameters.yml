@@ -4,7 +4,4 @@ random_state: 0
 
 MY_S3_BUCKET: 's3://pai-mlflow-test'
 
-MY_LOCAL_PAI_DIR: logs/pai
-PAI_EXPERIMENT: 'RF-Classifier PROD'
-
 covariate_shift_tests: ['ks_test', 'levene_test']
