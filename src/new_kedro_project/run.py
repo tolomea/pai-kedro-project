@@ -35,23 +35,9 @@ from datetime import datetime
 from kedro.context import KedroContext
 from kedro.runner import AbstractRunner
 from kedro.pipeline import Pipeline
-import pai
 
 from new_kedro_project.pipeline import create_pipeline
-
-
-class PAIKedroContextMixin:
-    def __init__(self, *args, pai_path=Path("logs/pai"), **kwargs):
-        super().__init__(*args, **kwargs)
-
-        pai.set_config(
-            experiment=self.pai_experiment, local_path=str(self.project_path / pai_path)
-        )
-
-    def run(self, *args, **kwargs):
-        run_name = "Model Run at %s" % datetime.now().strftime("%H:%M:%S")
-        with pai.start_run(run_name=run_name):
-            super().run(*args, **kwargs)
+from .pai_mixin import PAIKedroContextMixin
 
 
 class ProjectContext(PAIKedroContextMixin, KedroContext):
